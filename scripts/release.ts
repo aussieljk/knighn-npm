@@ -12,31 +12,17 @@
  * only edited the README or the CI definition should not burn a version number.
  * A manual run (Actions → Release → Run workflow) publishes unconditionally.
  *
- * Which version ships:
+ * Which version ships: always 0.0.1-canary.N, and nothing else, ever.
  *
- *   package.json holds a version npm does not have   →  publish that version as-is
- *   npm already has it                               →  bump the prerelease, publish that
+ *   package.json holds a canary npm does not have   →  publish that version as-is
+ *   npm already has it                              →  bump N, publish that
  *
- * The first case is what makes a hand-edited bump work. Someone who edits
- * package.json to 0.3.0 and pushes gets 0.3.0, not a prerelease of it — and a
- * re-run after a half-failed release republishes nothing, because by then npm
- * has the version and the bump moves past it. Both directions are idempotent,
- * which is the property that matters when the trigger is "every push to master".
+ * The base version is pinned at 0.0.1. The script refuses to publish anything
+ * that is not 0.0.1-canary.N, before and after the bump, so a hand edit to
+ * 0.0.2 (or a plain 0.0.1, whose prerelease bump would be 0.0.2-canary.0)
+ * fails the release instead of shipping.
  *
- * The automatic bump is `prerelease --preid=rc`, not `patch`, because a push to
- * master is not a considered release — it is whatever just landed. So 0.1.0
- * becomes 0.1.1-rc.0, then 0.1.1-rc.1, and the base version does not move until
- * someone deliberately promotes it:
- *
- *   npm version patch --no-git-tag-version   # 0.1.1-rc.3 → 0.1.1
- *
- * and pushes that. Semver sorts 0.1.1-rc.0 above 0.1.0 and below 0.1.1, so an rc
- * is a smaller step than a patch — which is the point. It is the same shape as
- * the 0.0.1-N series ljkui runs and the 0.0.1-canary.N series uight runs.
- *
- * These publish to the `latest` dist-tag, deliberately: `npm i <pkg>` gives the
- * newest rc. Nothing here is a stable-versus-preview split; the newest thing is
- * the thing.
+ * Canaries publish to the `latest` dist-tag: `npm i knighn` gives the newest.
  *
  * There is no npm token anywhere. In CI the publish authenticates by trusted
  * publishing: the job's `id-token: write` permission mints an OIDC token that npm
@@ -135,18 +121,26 @@ if (CI) {
   run(['git', 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com']);
 }
 
+/** The only versions this package may ever publish. */
+const CANARY = /^0\.0\.1-canary\.\d+$/;
+const requireCanary = (v: string) => {
+  if (!CANARY.test(v)) fail(`${v} is not 0.0.1-canary.N — knighn only ever publishes 0.0.1 canaries`);
+};
+
 const pkg = name();
 const published = await publishedVersions(pkg);
 const current = version();
+requireCanary(current);
 
 if (published.has(current)) {
-  step(`npm already has ${pkg}@${current} — bumping the rc`);
-  run(['npm', 'version', 'prerelease', '--preid', 'rc', '--no-git-tag-version']);
+  step(`npm already has ${pkg}@${current} — bumping the canary`);
+  run(['npm', 'version', 'prerelease', '--preid', 'canary', '--no-git-tag-version']);
 } else {
   step(`npm does not have ${pkg}@${current} yet — publishing it as-is`);
 }
 
 const released = version();
+requireCanary(released);
 
 step(`Publishing ${pkg}@${released}`);
 // --access public so a scoped package does not default to a restricted publish.
@@ -154,8 +148,8 @@ step(`Publishing ${pkg}@${released}`);
 // --tag latest is not the redundant default it looks like. npm refuses to
 // publish a prerelease version without an explicit --tag ("You must specify a
 // tag using --tag when publishing a prerelease version") — it will not quietly
-// move `latest` onto an rc. Since every automatic release here *is* a
-// prerelease, and rc-as-latest is the deliberate choice, the flag has to be
+// move `latest` onto a prerelease. Since every automatic release here *is* a
+// prerelease, and canary-as-latest is the deliberate choice, the flag has to be
 // spelled out on every publish.
 //
 // prepublishOnly builds the tarball; no --provenance flag, npm attaches it by
