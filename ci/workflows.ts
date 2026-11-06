@@ -30,7 +30,7 @@ const RUNNER: Runner = 'ubuntu-latest';
 /** Trusted publishing needs npm >= 11.5.1 / node >= 22.14.0; node 24 ships npm 11. */
 const NODE_VERSION = '24';
 
-const BUN_VERSION = '1.3.11';
+const BUN_VERSION = '1.4.4';
 
 const MASTER = 'master';
 
